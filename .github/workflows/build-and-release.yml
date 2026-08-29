@@ -1,0 +1,136 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: Build mode
+        type: choice
+        required: true
+        default: build and release
+        options:
+          - build and release
+          - build and release (force)
+          - build only
+      version:
+        description: Version to release (e.g. 1.2.3 or v1.2.3). If omitted, auto-increments patch from latest tag
+        type: string
+        required: false
+
+env:
+  CARGO_REGISTRY: https://github.com/rust-lang/crates.io-index
+  CARGO_TARGET_DIR: target
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    name: Resolve version
+    outputs:
+      version: ${{ steps.resolve-version.outputs.version }}
+      tag: ${{ steps.resolve-version.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-tags: true
+
+      - name: Sanitize provided version
+        id: sanitize
+        if: inputs.version != ''
+        uses: ./.github/actions/sanitize-version
+        with:
+          version: ${{ inputs.version }}
+
+      - name: Auto-increment version from tags
+        id: auto-version
+        if: inputs.version == ''
+        run: |
+          latest_tag=$(git tag --list | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+          if [ -z "$latest_tag" ]; then
+            echo "No existing tags found, defaulting to v0.0.1"
+            latest_tag="0.0.0"
+          fi
+
+          base="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$base"
+          patch=$((patch + 1))
+          version="${major}.${minor}.${patch}"
+          tag="v${version}"
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Auto-incremented version: ${version} (from tag: ${latest_tag})"
+
+      - name: Resolve version
+        id: resolve-version
+        run: |
+          if [ -n "${{ steps.sanitize.outputs.version }}" ]; then
+            version="${{ steps.sanitize.outputs.version }}"
+            tag="${{ steps.sanitize.outputs.tag }}"
+          else
+            version="${{ steps.auto-version.outputs.version }}"
+            tag="${{ steps.auto-version.outputs.tag }}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${version}, tag: ${tag}"
+
+  build:
+    name: Build
+    needs: version
+    uses: ./.github/workflows/compile-for-os.yml
+    with:
+      target_toolchain: x86_64-pc-windows-msvc
+      version: ${{ needs.version.outputs.version }}
+    secrets: inherit
+
+  release:
+    runs-on: ubuntu-latest
+    name: Release
+    needs:
+      - version
+      - build
+    permissions:
+      contents: write
+    if: success() && (inputs.build_mode == 'build and release' || inputs.build_mode == 'build and release (force)')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List dist folder contents
+        run: |
+          echo GitHub ref is: ${{ github.ref }}
+          echo === Current folder ===
+          pwd
+          echo === Root folder contents ===
+          ls -la
+          echo === Dist folder contents ===
+          ls -la dist
+
+      - name: Delete existing tag and release (only forced releases)
+        if: inputs.build_mode == 'build and release (force)'
+        run: |
+          echo "Deleting tag and release..."
+          echo "Tag name: $TAG"
+          gh release delete "$TAG" -y --cleanup-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+
+      - name: Create release
+        run: |
+          gh release create "$TAG" ./dist/ProcessPriorityEnforcer.x64.Windows.zip \
+            --repo "${{ github.repository }}" \
+            --title "$TAG" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}

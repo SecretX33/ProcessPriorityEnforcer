@@ -120,9 +120,20 @@ jobs:
         run: |
           echo "Deleting tag and release..."
           echo "Tag name: $TAG"
-          gh release delete "$TAG" -y --cleanup-tag
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes
+          else
+            echo "No existing release found for $TAG"
+          fi
+
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" --silent >/dev/null 2>&1; then
+            gh api --method DELETE "repos/$GH_REPO/git/refs/tags/$TAG"
+          else
+            echo "No existing tag found for $TAG"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
 
       - name: Create release

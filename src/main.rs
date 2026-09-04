@@ -1,5 +1,5 @@
-use crate::config::{AppConfig, read_app_config};
-use crate::process::{HandleOpenType, ManagedHandle, change_current_process_to_idle, change_process_to_idle, enable_debug_privilege, open_process};
+use crate::config::{AppConfig, AppPriorityConfig, read_app_config};
+use crate::process::{apply_process_priorities_config, change_current_process_to_idle, open_process, set_cpu_priority, set_io_priority, set_power_qos, HandleOpenType, ManagedHandle};
 use color_eyre::eyre::{Context, Result, bail};
 use latches::sync::Latch;
 use std::path::PathBuf;
@@ -7,6 +7,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::{collections::HashMap, time::Duration};
+use windows::Win32::Foundation::HANDLE;
 use wmi::{FilterValue, WMIConnection};
 
 mod config;
@@ -41,7 +42,9 @@ impl From<WinProcess> for process::Process {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-    enable_debug_privilege()?;
+    #[cfg(not(debug_assertions))] {
+        crate::process::enable_debug_privilege()?;
+    }
 
     log!("Starting Idle Process Enforcer...");
     let app_config = get_config()?;
@@ -72,10 +75,10 @@ fn update_running_processes(app_config: &AppConfig) -> Result<()> {
     let mut updated_count = 0;
 
     for process in &running_processes {
-        let Some(OpenedProcess{ handle, executable_path}) = open_process_handle_if_matches(process, app_config) else { continue };
+        let Some(OpenedProcess{ handle, executable_path, priority_config }) = open_process_handle_if_matches(process, app_config) else { continue };
 
-        log!("Found running: '{}' ({}) ({}), updating to idle priority", process.name, process.id, executable_path.display());
-        if let Err(err) = change_process_to_idle(&handle) {
+        log!("Found running: '{}' ({}) ({}), updating its priorities: {:?}", process.name, process.id, executable_path.display(), priority_config);
+        if let Err(err) = apply_process_priorities_config(handle.clone(), &priority_config) {
             log!("Failed to change priority of {} ({}) ({}): {}", process.name, process.id, executable_path.display(), err);
             continue;
         }
@@ -117,13 +120,14 @@ fn monitor_processes(app_config: &AppConfig, latch: Arc<Latch>) -> Result<()> {
         let Some(OpenedProcess {
             handle,
             executable_path,
+            priority_config,
         }) = open_process_handle_if_matches(&process, app_config)
         else {
             continue;
         };
 
-        log!("Started: '{}' ({}) ({}), updating to idle priority", process.name, process.id, executable_path.display());
-        change_process_to_idle(&handle)?;
+        log!("Started: '{}' ({}) ({}), updating its priorities: {:?}", process.name, process.id, executable_path.display(), priority_config);
+        apply_process_priorities_config(handle.clone(), &priority_config)?;
     }
     Ok(())
 }
@@ -131,6 +135,7 @@ fn monitor_processes(app_config: &AppConfig, latch: Arc<Latch>) -> Result<()> {
 struct OpenedProcess {
     handle: ManagedHandle,
     executable_path: PathBuf,
+    priority_config: AppPriorityConfig,
 }
 
 fn open_process_handle_if_matches(
@@ -143,12 +148,14 @@ fn open_process_handle_if_matches(
     let Ok(executable_path) = process::get_image_path_from_handle(*handle)
         .inspect_err(|err| debug_log!("Failed to get image path for process {} ({}): {}", process.name, process.id, err))
         else { return None };
-    if !app_config.paths.is_match(&executable_path) {
-        return None;
-    }
 
+    let Some(priority_config) = app_config.groups.iter()
+        .find(|group| group.paths.is_match(&executable_path))
+        .map(|e| e.priorities.clone()) else {
+            return None
+        };
     let handle = open_process(process.id, HandleOpenType::SetInfo)
         .inspect_err(|err| log!("Matched process, but could not open handle to set info {} ({}): {}", process.name, process.id, err))
         .ok()?;
-    Some(OpenedProcess { handle, executable_path })
+    Some(OpenedProcess { handle, executable_path, priority_config })
 }

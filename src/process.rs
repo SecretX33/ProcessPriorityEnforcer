@@ -1,4 +1,4 @@
-use crate::{debug_log};
+use crate::debug_log;
 use color_eyre::Result;
 use color_eyre::eyre::bail;
 use std::ffi::{OsString, c_void};
@@ -20,6 +20,7 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 use windows::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, OpenProcess, OpenProcessToken, PROCESS_CREATION_FLAGS, PROCESS_NAME_WIN32, PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION, ProcessPowerThrottling, QueryFullProcessImageNameW, SetPriorityClass, SetProcessInformation};
 use windows::core::Result as WindowsResult;
 use windows::core::{PCWSTR, PWSTR};
+use crate::config::AppPriorityConfig;
 
 pub enum HandleOpenType {
     QueryInfo,
@@ -44,6 +45,7 @@ pub fn open_process(process_id: u32, open_type: HandleOpenType) -> Result<Manage
     Ok(process_handle)
 }
 
+#[allow(dead_code)] // Used in release builds only
 pub fn enable_debug_privilege() -> Result<()> {
     let mut token_handle = HANDLE::default();
     unsafe {
@@ -151,13 +153,7 @@ pub fn get_image_path_from_handle(handle: HANDLE) -> windows::core::Result<PathB
 
 pub fn change_current_process_to_idle() -> Result<()> {
     let handle = unsafe { GetCurrentProcess() }.to_managed();
-    change_process_to_idle(&handle)
-}
-
-pub fn change_process_to_idle(
-    process_handle: &ManagedHandle,
-) -> Result<()> {
-    enable_efficiency_mode(**process_handle).map_err(|err| err.into())
+    enable_efficiency_mode(*handle).map_err(|err| err.into())
 }
 
 pub fn strip_trailing_nulls(slice: &[u16]) -> &[u16] {
@@ -323,6 +319,19 @@ pub fn set_power_qos(
             size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
         )
     }
+}
+
+pub fn apply_process_priorities_config(handle: HANDLE, priorities_config: &AppPriorityConfig) -> Result<()> {
+    if let Some(cpu_priority) = priorities_config.cpu {
+        set_cpu_priority(handle, cpu_priority)?;
+    }
+    if let Some(io_priority) = priorities_config.io {
+        set_io_priority(handle, io_priority)?;
+    }
+    if let Some(power_qos) = priorities_config.power {
+        set_power_qos(handle, power_qos)?;
+    }
+    Ok(())
 }
 
 fn enable_efficiency_mode(

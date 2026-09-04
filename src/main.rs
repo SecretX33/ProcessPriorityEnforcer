@@ -1,5 +1,8 @@
 use crate::config::{AppConfig, AppPriorityConfig, read_app_config};
-use crate::process::{apply_process_priorities_config, change_current_process_to_idle, open_process, set_cpu_priority, set_io_priority, set_power_qos, HandleOpenType, ManagedHandle};
+use crate::process::{
+    HandleOpenType, ManagedHandle, apply_process_priorities_config, change_current_process_to_idle,
+    open_process, set_cpu_priority, set_io_priority, set_power_qos,
+};
 use color_eyre::eyre::{Context, Result, bail};
 use latches::sync::Latch;
 use std::path::PathBuf;
@@ -42,7 +45,8 @@ impl From<WinProcess> for process::Process {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-    #[cfg(not(debug_assertions))] {
+    #[cfg(not(debug_assertions))]
+    {
         crate::process::enable_debug_privilege()?;
     }
 
@@ -75,11 +79,30 @@ fn update_running_processes(app_config: &AppConfig) -> Result<()> {
     let mut updated_count = 0;
 
     for process in &running_processes {
-        let Some(OpenedProcess{ handle, executable_path, priority_config }) = open_process_handle_if_matches(process, app_config) else { continue };
+        let Some(OpenedProcess {
+            handle,
+            executable_path,
+            priority_config,
+        }) = open_process_handle_if_matches(process, app_config)
+        else {
+            continue;
+        };
 
-        log!("Found running: '{}' ({}) ({}), updating its priorities: {:?}", process.name, process.id, executable_path.display(), priority_config);
+        log!(
+            "Found running: '{}' ({}) ({}), updating its priorities: {:?}",
+            process.name,
+            process.id,
+            executable_path.display(),
+            priority_config
+        );
         if let Err(err) = apply_process_priorities_config(handle.clone(), &priority_config) {
-            log!("Failed to change priority of {} ({}) ({}): {}", process.name, process.id, executable_path.display(), err);
+            log!(
+                "Failed to change priority of {} ({}) ({}): {}",
+                process.name,
+                process.id,
+                executable_path.display(),
+                err
+            );
             continue;
         }
         updated_count += 1;
@@ -106,11 +129,14 @@ fn start_monitoring_processes(app_config: &AppConfig, latch: Arc<Latch>) -> Join
 fn monitor_processes(app_config: &AppConfig, latch: Arc<Latch>) -> Result<()> {
     let connection = WMIConnection::new()?;
     let mut filters = HashMap::new();
-    filters.insert("TargetInstance".to_owned(), FilterValue::is_a::<WinProcess>()?);
-    let events =
-        connection.filtered_notification::<WinProcessStart>(&filters, Some(Duration::from_secs(1)))
-            .wrap_err("Failed to subscribe to process creation events")?
-            .filter_map(|e| e.ok());
+    filters.insert(
+        "TargetInstance".to_owned(),
+        FilterValue::is_a::<WinProcess>()?,
+    );
+    let events = connection
+        .filtered_notification::<WinProcessStart>(&filters, Some(Duration::from_secs(1)))
+        .wrap_err("Failed to subscribe to process creation events")?
+        .filter_map(|e| e.ok());
 
     log!("Monitoring for process creation events...");
     latch.count_down();
@@ -126,7 +152,13 @@ fn monitor_processes(app_config: &AppConfig, latch: Arc<Latch>) -> Result<()> {
             continue;
         };
 
-        log!("Started: '{}' ({}) ({}), updating its priorities: {:?}", process.name, process.id, executable_path.display(), priority_config);
+        log!(
+            "Started: '{}' ({}) ({}), updating its priorities: {:?}",
+            process.name,
+            process.id,
+            executable_path.display(),
+            priority_config
+        );
         apply_process_priorities_config(handle.clone(), &priority_config)?;
     }
     Ok(())
@@ -142,20 +174,42 @@ fn open_process_handle_if_matches(
     process: &process::Process,
     app_config: &AppConfig,
 ) -> Option<OpenedProcess> {
-    let Ok(handle) = open_process(process.id, HandleOpenType::QueryInfo)
-    else { return None };
+    let Ok(handle) = open_process(process.id, HandleOpenType::QueryInfo) else {
+        return None;
+    };
 
-    let Ok(executable_path) = process::get_image_path_from_handle(*handle)
-        .inspect_err(|err| debug_log!("Failed to get image path for process {} ({}): {}", process.name, process.id, err))
-        else { return None };
+    let Ok(executable_path) = process::get_image_path_from_handle(*handle).inspect_err(|err| {
+        debug_log!(
+            "Failed to get image path for process {} ({}): {}",
+            process.name,
+            process.id,
+            err
+        )
+    }) else {
+        return None;
+    };
 
-    let Some(priority_config) = app_config.groups.iter()
+    let Some(priority_config) = app_config
+        .groups
+        .iter()
         .find(|group| group.paths.is_match(&executable_path))
-        .map(|e| e.priorities.clone()) else {
-            return None
-        };
+        .map(|e| e.priorities.clone())
+    else {
+        return None;
+    };
     let handle = open_process(process.id, HandleOpenType::SetInfo)
-        .inspect_err(|err| log!("Matched process, but could not open handle to set info {} ({}): {}", process.name, process.id, err))
+        .inspect_err(|err| {
+            log!(
+                "Matched process, but could not open handle to set info {} ({}): {}",
+                process.name,
+                process.id,
+                err
+            )
+        })
         .ok()?;
-    Some(OpenedProcess { handle, executable_path, priority_config })
+    Some(OpenedProcess {
+        handle,
+        executable_path,
+        priority_config,
+    })
 }

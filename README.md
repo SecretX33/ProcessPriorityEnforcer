@@ -44,7 +44,7 @@ A JSON file containing groups of paths and priorities. The first group whose `pa
 
 The path patterns are case-sensitive and are matched against each process's full executable path. Both `/` and `\` path separators are accepted. The config file can be stored anywhere on your computer.
 
-All `priorities` values are optional. When a value is unset, that priority is not changed. Priority values are case-insensitive.
+All `priorities` values are optional. When a value is unset, that priority is not changed. Enum values are case-insensitive.
 
 - `cpu`: `Idle`, `BelowNormal`, `Normal`, `AboveNormal`, `High`
 - `io`: `VeryLow`, `Low`, `Normal`

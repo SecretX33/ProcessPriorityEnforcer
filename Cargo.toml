@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+arc-swap = "1.9.2"
 color-eyre = { version = "0.6.5", features = ["track-caller"], default-features = false }
 globset = "0.4.20"
 latches = "0.2.0"
+notify-debouncer-full = "0.7.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 windows = { version = "0.62.2", features = [

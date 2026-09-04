@@ -2,7 +2,7 @@
 
 A small Windows utility that keeps selected applications in Efficiency mode.
 
-On startup, it updates any matching processes that are already running, then monitors for newly started processes and updates them as they appear. Matching processes receive idle CPU priority, very-low I/O priority, and Eco power QoS.
+On startup, it updates any matching processes that are already running, then monitors for newly started processes and updates them as they appear. Matching processes receive the configured priorities.
 
 ## Download
 
@@ -12,7 +12,7 @@ Get the latest version [here](https://github.com/SecretX33/SimpleBackup/releases
 
 ## Usage
 
-Leave the application running in the background to apply "Efficiency mode" to matching processes whenever they start.
+Leave the application running in the background to apply the configured priorities to matching processes whenever they start.
 
 ```sh
 processpriorityenforcer.exe <path/to/config.json>
@@ -22,18 +22,33 @@ processpriorityenforcer.exe <path/to/config.json>
 
 ## Configuration
 
-A JSON file containing the absolute executable paths to match. Each entry supports glob patterns:
+A JSON file containing groups of paths and priorities. The first group whose `paths` match a process is used:
 
 ```json
 {
-  "paths": [
-    "C:/SomeFolder/**/*.exe",
-    "**/SomeFile.exe"
+  "groups": [
+    {
+      "paths": [
+        "C:/SomeFolder/**/*.exe",
+        "**/SomeFile.exe"
+      ],
+      "priorities": {
+        "cpu": "Idle",
+        "io": "VeryLow",
+        "power": "Eco"
+      }
+    }
   ]
 }
 ```
 
-The patterns are **case-sensitive** and are matched against each process's full executable path (accepts both `/` and `\` path separators).  The config file can be stored anywhere on your computer.
+The path patterns are case-sensitive and are matched against each process's full executable path. Both `/` and `\` path separators are accepted. The config file can be stored anywhere on your computer.
+
+All `priorities` values are optional. When a value is unset, that priority is not changed. Enum values are case-insensitive.
+
+- `cpu`: `Idle`, `BelowNormal`, `Normal`, `AboveNormal`, `High`
+- `io`: `VeryLow`, `Low`, `Normal`
+- `power`: `SystemManaged`, `Eco`, `High`
 
 ## Building from Source
 

@@ -1,4 +1,5 @@
-use crate::{debug_log};
+use crate::config::AppPriorityConfig;
+use crate::debug_log;
 use color_eyre::Result;
 use color_eyre::eyre::bail;
 use std::ffi::{OsString, c_void};
@@ -14,10 +15,16 @@ use windows::Win32::Security::{
     SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
-    TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::System::Threading::{ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, OpenProcess, OpenProcessToken, PROCESS_CREATION_FLAGS, PROCESS_NAME_WIN32, PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION, ProcessPowerThrottling, QueryFullProcessImageNameW, SetPriorityClass, SetProcessInformation};
+use windows::Win32::System::Threading::{
+    ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess,
+    HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, OpenProcess, OpenProcessToken,
+    PROCESS_CREATION_FLAGS, PROCESS_NAME_WIN32, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+    PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION, ProcessPowerThrottling,
+    QueryFullProcessImageNameW, SetPriorityClass, SetProcessInformation,
+};
 use windows::core::Result as WindowsResult;
 use windows::core::{PCWSTR, PWSTR};
 
@@ -44,6 +51,7 @@ pub fn open_process(process_id: u32, open_type: HandleOpenType) -> Result<Manage
     Ok(process_handle)
 }
 
+#[allow(dead_code)] // Used in release builds only
 pub fn enable_debug_privilege() -> Result<()> {
     let mut token_handle = HANDLE::default();
     unsafe {
@@ -68,9 +76,8 @@ pub fn enable_debug_privilege() -> Result<()> {
         }],
     };
 
-    let result = unsafe {
-        AdjustTokenPrivileges(*token_handle, false, Some(&privileges), 0, None, None)
-    };
+    let result =
+        unsafe { AdjustTokenPrivileges(*token_handle, false, Some(&privileges), 0, None, None) };
     let last_error = unsafe { GetLastError() };
     result?;
 
@@ -119,7 +126,8 @@ pub fn get_running_processes() -> Result<Vec<Process>> {
         }
     }
 
-    #[cfg(debug_assertions)] {
+    #[cfg(debug_assertions)]
+    {
         running_processes.sort_by_key(|a| a.name.to_lowercase());
     }
     Ok(running_processes)
@@ -151,13 +159,7 @@ pub fn get_image_path_from_handle(handle: HANDLE) -> windows::core::Result<PathB
 
 pub fn change_current_process_to_idle() -> Result<()> {
     let handle = unsafe { GetCurrentProcess() }.to_managed();
-    change_process_to_idle(&handle)
-}
-
-pub fn change_process_to_idle(
-    process_handle: &ManagedHandle,
-) -> Result<()> {
-    enable_efficiency_mode(**process_handle).map_err(|err| err.into())
+    enable_efficiency_mode(*handle).map_err(|err| err.into())
 }
 
 pub fn strip_trailing_nulls(slice: &[u16]) -> &[u16] {
@@ -261,19 +263,11 @@ pub enum PowerQos {
     High,
 }
 
-pub fn set_cpu_priority(
-    process: HANDLE,
-    priority: CpuPriority,
-) -> WindowsResult<()> {
-    unsafe {
-        SetPriorityClass(process, priority.as_windows_flag())
-    }
+pub fn set_cpu_priority(process: HANDLE, priority: CpuPriority) -> WindowsResult<()> {
+    unsafe { SetPriorityClass(process, priority.as_windows_flag()) }
 }
 
-pub fn set_io_priority(
-    process: HANDLE,
-    priority: IoPriority,
-) -> io::Result<()> {
+pub fn set_io_priority(process: HANDLE, priority: IoPriority) -> io::Result<()> {
     let priority = priority as u32;
 
     let status = unsafe {
@@ -293,20 +287,19 @@ pub fn set_io_priority(
     }
 }
 
-pub fn set_power_qos(
-    process: HANDLE,
-    qos: PowerQos,
-) -> WindowsResult<()> {
+pub fn set_power_qos(process: HANDLE, qos: PowerQos) -> WindowsResult<()> {
     let (control_mask, state_mask) = match qos {
         PowerQos::SystemManaged => (0, 0), // Let Windows decide (default)
-        PowerQos::Eco => ( // Enable execution-speed throttling
+        PowerQos::Eco => (
+            // Enable execution-speed throttling
             PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
             PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
         ),
-        PowerQos::High => ( // Disable execution-speed throttling
+        PowerQos::High => (
+            // Disable execution-speed throttling
             PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
             0,
-        )
+        ),
     };
 
     let state = PROCESS_POWER_THROTTLING_STATE {
@@ -325,9 +318,23 @@ pub fn set_power_qos(
     }
 }
 
-fn enable_efficiency_mode(
-    process: HANDLE,
-) -> WindowsResult<()> {
+pub fn apply_process_priorities_config(
+    handle: HANDLE,
+    priorities_config: &AppPriorityConfig,
+) -> Result<()> {
+    if let Some(cpu_priority) = priorities_config.cpu {
+        set_cpu_priority(handle, cpu_priority)?;
+    }
+    if let Some(io_priority) = priorities_config.io {
+        set_io_priority(handle, io_priority)?;
+    }
+    if let Some(power_qos) = priorities_config.power {
+        set_power_qos(handle, power_qos)?;
+    }
+    Ok(())
+}
+
+fn enable_efficiency_mode(process: HANDLE) -> WindowsResult<()> {
     set_cpu_priority(process, CpuPriority::Idle)?;
     set_io_priority(process, IoPriority::VeryLow)?;
     set_power_qos(process, PowerQos::Eco)?;

@@ -1,5 +1,3 @@
-// use log::SetLoggerError;
-// Disable warnings
 #![allow(unused_macros)]
 
 #[macro_export]
@@ -15,10 +13,3 @@ macro_rules! debug_log {
         }
     }
 }
-
-// pub fn init_logger() -> Result<(), SetLoggerError> {
-//     env_logger::Builder::from_default_env()
-//         .format_level(true)
-//         .format_timestamp_nanos()
-//         .try_init()
-// }

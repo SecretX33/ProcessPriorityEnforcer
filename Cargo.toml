@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+arc-swap = "1.9.2"
 color-eyre = { version = "0.6.5", features = ["track-caller"], default-features = false }
 globset = "0.4.20"
 latches = "0.2.0"

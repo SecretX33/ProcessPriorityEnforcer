@@ -52,7 +52,7 @@ fn main() -> Result<()> {
         crate::process::enable_debug_privilege()?;
     }
 
-    log!("Starting Idle Process Enforcer...");
+    log!("Starting ProcessPriorityEnforcer...");
     let (app_config, app_config_path) = get_config()?;
 
     let monitor_start_latch = Arc::new(Latch::new(1));

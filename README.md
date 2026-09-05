@@ -33,7 +33,7 @@ A JSON file containing groups of paths and priorities. The first group whose `pa
         "**/SomeFile.exe"
       ],
       "priorities": {
-        "cpu": "Idle",
+        "cpu": "VeryLow",
         "io": "VeryLow",
         "power": "Eco"
       }
@@ -46,7 +46,7 @@ The path patterns are case-sensitive and are matched against each process's full
 
 All `priorities` values are optional. When a value is unset, that priority is not changed. Enum values are case-insensitive.
 
-- `cpu`: `Idle`, `BelowNormal`, `Normal`, `AboveNormal`, `High`
+- `cpu`: `VeryLow`, `Low`, `Normal`, `High`, `VeryHigh`
 - `io`: `VeryLow`, `Low`, `Normal`
 - `power`: `SystemManaged`, `Eco`, `High`
 

@@ -54,15 +54,15 @@ where
 
 impl CaseInsensitiveConfigValue for CpuPriority {
     const VARIANTS: &'static [&'static str] =
-        &["Idle", "BelowNormal", "Normal", "AboveNormal", "High"];
+        &["VeryLow", "Low", "Normal", "High", "VeryHigh"];
 
     fn from_config_str(value: &str) -> Option<Self> {
         match value {
-            value if value.eq_ignore_ascii_case("Idle") => Some(Self::Idle),
-            value if value.eq_ignore_ascii_case("BelowNormal") => Some(Self::BelowNormal),
+            value if value.eq_ignore_ascii_case("VeryLow") => Some(Self::VeryLow),
+            value if value.eq_ignore_ascii_case("Low") => Some(Self::Low),
             value if value.eq_ignore_ascii_case("Normal") => Some(Self::Normal),
-            value if value.eq_ignore_ascii_case("AboveNormal") => Some(Self::AboveNormal),
             value if value.eq_ignore_ascii_case("High") => Some(Self::High),
+            value if value.eq_ignore_ascii_case("VeryHigh") => Some(Self::VeryHigh),
             _ => None,
         }
     }

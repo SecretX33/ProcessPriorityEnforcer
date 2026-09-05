@@ -223,22 +223,22 @@ const PROCESS_IO_PRIORITY: u32 = 33;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum CpuPriority {
-    Idle,
-    BelowNormal,
+    VeryLow,
+    Low,
     #[default]
     Normal,
-    AboveNormal,
     High,
+    VeryHigh,
 }
 
 impl CpuPriority {
     fn as_windows_flag(self) -> PROCESS_CREATION_FLAGS {
         match self {
-            Self::Idle => IDLE_PRIORITY_CLASS,
-            Self::BelowNormal => BELOW_NORMAL_PRIORITY_CLASS,
+            Self::VeryLow => IDLE_PRIORITY_CLASS,
+            Self::Low => BELOW_NORMAL_PRIORITY_CLASS,
             Self::Normal => NORMAL_PRIORITY_CLASS,
-            Self::AboveNormal => ABOVE_NORMAL_PRIORITY_CLASS,
-            Self::High => HIGH_PRIORITY_CLASS,
+            Self::High => ABOVE_NORMAL_PRIORITY_CLASS,
+            Self::VeryHigh => HIGH_PRIORITY_CLASS,
         }
     }
 }
@@ -335,7 +335,7 @@ pub fn apply_process_priorities_config(
 }
 
 fn enable_efficiency_mode(process: HANDLE) -> WindowsResult<()> {
-    set_cpu_priority(process, CpuPriority::Idle)?;
+    set_cpu_priority(process, CpuPriority::VeryLow)?;
     set_io_priority(process, IoPriority::VeryLow)?;
     set_power_qos(process, PowerQos::Eco)?;
     Ok(())

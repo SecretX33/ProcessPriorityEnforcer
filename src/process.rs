@@ -19,11 +19,14 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 };
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess,
-    HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, OpenProcess, OpenProcessToken,
-    PROCESS_CREATION_FLAGS, PROCESS_NAME_WIN32, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-    PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION, ProcessPowerThrottling,
-    QueryFullProcessImageNameW, SetPriorityClass, SetProcessInformation,
+    HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, MEMORY_PRIORITY, MEMORY_PRIORITY_BELOW_NORMAL,
+    MEMORY_PRIORITY_INFORMATION, MEMORY_PRIORITY_LOW, MEMORY_PRIORITY_MEDIUM,
+    MEMORY_PRIORITY_NORMAL, MEMORY_PRIORITY_VERY_LOW, NORMAL_PRIORITY_CLASS, OpenProcess,
+    OpenProcessToken, PROCESS_CREATION_FLAGS, PROCESS_NAME_WIN32,
+    PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+    PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION,
+    ProcessMemoryPriority, ProcessPowerThrottling, QueryFullProcessImageNameW, SetPriorityClass,
+    SetProcessInformation,
 };
 use windows::core::Result as WindowsResult;
 use windows::core::{PCWSTR, PWSTR};
@@ -244,6 +247,28 @@ impl CpuPriority {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+pub enum MemoryPriority {
+    VeryLow,
+    Low,
+    Medium,
+    BelowNormal,
+    #[default]
+    Normal,
+}
+
+impl MemoryPriority {
+    fn as_windows_priority(self) -> MEMORY_PRIORITY {
+        match self {
+            Self::VeryLow => MEMORY_PRIORITY_VERY_LOW,
+            Self::Low => MEMORY_PRIORITY_LOW,
+            Self::Medium => MEMORY_PRIORITY_MEDIUM,
+            Self::BelowNormal => MEMORY_PRIORITY_BELOW_NORMAL,
+            Self::Normal => MEMORY_PRIORITY_NORMAL,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
 #[repr(u32)]
 pub enum IoPriority {
     VeryLow = 0,
@@ -265,6 +290,21 @@ pub enum PowerQos {
 
 pub fn set_cpu_priority(process: HANDLE, priority: CpuPriority) -> WindowsResult<()> {
     unsafe { SetPriorityClass(process, priority.as_windows_flag()) }
+}
+
+pub fn set_memory_priority(process: HANDLE, priority: MemoryPriority) -> WindowsResult<()> {
+    let info = MEMORY_PRIORITY_INFORMATION {
+        MemoryPriority: priority.as_windows_priority(),
+    };
+
+    unsafe {
+        SetProcessInformation(
+            process,
+            ProcessMemoryPriority,
+            &info as *const MEMORY_PRIORITY_INFORMATION as *const c_void,
+            size_of::<MEMORY_PRIORITY_INFORMATION>() as u32,
+        )
+    }
 }
 
 pub fn set_io_priority(process: HANDLE, priority: IoPriority) -> io::Result<()> {
@@ -324,6 +364,9 @@ pub fn apply_process_priorities_config(
 ) -> Result<()> {
     if let Some(cpu_priority) = priorities_config.cpu {
         set_cpu_priority(handle, cpu_priority)?;
+    }
+    if let Some(memory_priority) = priorities_config.memory {
+        set_memory_priority(handle, memory_priority)?;
     }
     if let Some(io_priority) = priorities_config.io {
         set_io_priority(handle, io_priority)?;

@@ -34,6 +34,7 @@ A JSON file containing groups of paths and priorities. The first group whose `pa
       ],
       "priorities": {
         "cpu": "VeryLow",
+        "memory": "VeryLow",
         "io": "VeryLow",
         "power": "Eco"
       }
@@ -47,6 +48,7 @@ The path patterns are case-sensitive and are matched against each process's full
 All `priorities` values are optional. When a value is unset, that priority is not changed. Enum values are case-insensitive.
 
 - `cpu`: `VeryLow`, `Low`, `Normal`, `High`, `VeryHigh`
+- `memory`: `VeryLow`, `Low`, `Medium`, `BelowNormal`, `Normal`. Sets the default priority of pages added to the process working set; Windows trims lower priority pages first when memory is needed.
 - `io`: `VeryLow`, `Low`, `Normal`
 - `power`: `SystemManaged`, `Eco`, `High`
 

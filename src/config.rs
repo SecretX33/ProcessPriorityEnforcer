@@ -1,5 +1,5 @@
 use crate::log;
-use crate::process::{CpuPriority, IoPriority, PowerQos};
+use crate::process::{CpuPriority, IoPriority, MemoryPriority, PowerQos};
 use crate::util::normalize_path;
 use color_eyre::eyre::{Result, bail};
 use globset::{GlobBuilder, GlobSet};
@@ -25,6 +25,8 @@ pub struct AppGroupConfig {
 pub struct AppPriorityConfig {
     #[serde(default, deserialize_with = "deserialize_optional_case_insensitive")]
     pub cpu: Option<CpuPriority>,
+    #[serde(default, deserialize_with = "deserialize_optional_case_insensitive")]
+    pub memory: Option<MemoryPriority>,
     #[serde(default, deserialize_with = "deserialize_optional_case_insensitive")]
     pub io: Option<IoPriority>,
     #[serde(default, deserialize_with = "deserialize_optional_case_insensitive")]
@@ -53,8 +55,7 @@ where
 }
 
 impl CaseInsensitiveConfigValue for CpuPriority {
-    const VARIANTS: &'static [&'static str] =
-        &["VeryLow", "Low", "Normal", "High", "VeryHigh"];
+    const VARIANTS: &'static [&'static str] = &["VeryLow", "Low", "Normal", "High", "VeryHigh"];
 
     fn from_config_str(value: &str) -> Option<Self> {
         match value {
@@ -63,6 +64,22 @@ impl CaseInsensitiveConfigValue for CpuPriority {
             value if value.eq_ignore_ascii_case("Normal") => Some(Self::Normal),
             value if value.eq_ignore_ascii_case("High") => Some(Self::High),
             value if value.eq_ignore_ascii_case("VeryHigh") => Some(Self::VeryHigh),
+            _ => None,
+        }
+    }
+}
+
+impl CaseInsensitiveConfigValue for MemoryPriority {
+    const VARIANTS: &'static [&'static str] =
+        &["VeryLow", "Low", "Medium", "BelowNormal", "Normal"];
+
+    fn from_config_str(value: &str) -> Option<Self> {
+        match value {
+            value if value.eq_ignore_ascii_case("VeryLow") => Some(Self::VeryLow),
+            value if value.eq_ignore_ascii_case("Low") => Some(Self::Low),
+            value if value.eq_ignore_ascii_case("Medium") => Some(Self::Medium),
+            value if value.eq_ignore_ascii_case("BelowNormal") => Some(Self::BelowNormal),
+            value if value.eq_ignore_ascii_case("Normal") => Some(Self::Normal),
             _ => None,
         }
     }
